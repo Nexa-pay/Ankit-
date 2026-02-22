@@ -1,7 +1,7 @@
 import os
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -13,9 +13,10 @@ from telegram.ext import (
 )
 import random
 
-# Enable logging
-logging.basicFormat = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-level=logging.INFO
+# Enable logging - FIXED THE SYNTAX ERROR HERE
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Total referrals: {user_stats.get('referrals', 0)}"
         )
         await query.edit_message_text(refer_text, parse_mode='Markdown')
+        return
     
     # Add back button
     keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data='back_to_menu')]]
@@ -247,6 +249,9 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Initialize if not exists
             if referrer_id not in user_data:
                 user_data[referrer_id] = {
+                    'username': None,
+                    'first_name': None,
+                    'joined_date': datetime.now(),
                     'points': 0,
                     'referrals': 0,
                     'last_checkin': None
@@ -306,7 +311,7 @@ def main():
         application.add_handler(CommandHandler("promo", promo))
         application.add_handler(CommandHandler("checkin", checkin))
         
-        # Add callback query handler
+        # Add callback query handlers
         application.add_handler(CallbackQueryHandler(button_callback))
         application.add_handler(CallbackQueryHandler(back_to_menu, pattern='^back_to_menu$'))
         
