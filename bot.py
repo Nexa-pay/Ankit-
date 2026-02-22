@@ -28,19 +28,32 @@ if not BOT_TOKEN:
     logger.error("CRITICAL: BOT_TOKEN environment variable is not set!")
     sys.exit(1)
 
+# Owner Configuration
+OWNER_ID = int(os.environ.get('6950501653', '0'))  # Set your Telegram user ID here
+if OWNER_ID == 0:
+    logger.warning("6950501653 not set! Owner commands will be disabled.")
+
 # Channel and Group Configuration
 CHANNEL_USERNAME = os.environ.get('CHANNEL_USERNAME', '@thehindigroup')
+CHANNEL_LINK = os.environ.get('CHANNEL_LINK', 'https://t.me/thehindigroup')
 GROUP_LINK = os.environ.get('GROUP_LINK', 'https://t.me/+Uc3SnOfhASEzZDcx')
 
+# Clean channel username for display
 if CHANNEL_USERNAME.startswith('@'):
     CHANNEL_USERNAME_CLEAN = CHANNEL_USERNAME[1:]
+    CHANNEL_USERNAME_DISPLAY = CHANNEL_USERNAME
 else:
     CHANNEL_USERNAME_CLEAN = CHANNEL_USERNAME
+    CHANNEL_USERNAME_DISPLAY = f"@{CHANNEL_USENAME}"
 
-logger.info(f"Bot configured for channel: {CHANNEL_USERNAME}")
+logger.info(f"Bot configured for channel: {https://t.me/vellickor}")
+logger.info(f"Owner ID: {6950501653}")
 
 # Store user data
 user_data = {}
+
+# Store active giveaways
+active_giveaways = {}
 
 # Game data
 games = {
@@ -78,15 +91,416 @@ games = {
 
 # Promotion messages
 PROMO_MESSAGES = [
-    "🔥 Welcome to Ankit Hunter Comback! The ultimate gaming experience awaits!",
-    "🎮 Join Ankit Hunter Comback for exclusive gaming content and tips!",
-    "⚡ Level up your gaming skills with Ankit Hunter Comback!",
-    "🏆 Become a champion with Ankit Hunter Comback community!",
-    "🎯 Get pro gaming strategies only at Ankit Hunter Comback!",
-    "💫 New gaming content daily at Ankit Hunter Comback!",
-    "🚀 Join thousands of gamers at Ankit Hunter Comback!",
-    "🎲 Exclusive giveaways and contests at Ankit Hunter Comback!",
+    "🔥 Welcome to AKASH Bot! The ultimate gaming experience awaits!",
+    "🎮 Join AKASH for exclusive gaming content and tips!",
+    "⚡ Level up your gaming skills with AKASH!",
+    "🏆 Become a champion with AKASH community!",
+    "🎯 Get pro gaming strategies only at AKASH!",
+    "💫 New gaming content daily at AKASH!",
+    "🚀 Join thousands of gamers at AKASH!",
+    "🎲 Exclusive giveaways and contests at AKASH!",
 ]
+
+# ==================== OWNER COMMANDS ====================
+
+def is_owner(user_id):
+    """Check if user is the bot owner."""
+    return user_id == OWNER_ID
+
+async def owner_addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner command to add coins to a user.
+    Usage: /addcoins @username amount
+    """
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("❌ This command is only for bot owner!")
+        return
+    
+    # Check arguments
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Usage: /addcoins @username amount\n"
+            "Example: /addcoins @john 100"
+        )
+        return
+    
+    username = context.args[0].replace('@', '')
+    try:
+        amount = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Amount must be a number!")
+        return
+    
+    if amount <= 0:
+        await update.message.reply_text("❌ Amount must be positive!")
+        return
+    
+    # Find user by username
+    target_user_id = None
+    target_user_data = None
+    
+    for uid, data in user_data.items():
+        if data.get('username', '').lower() == username.lower():
+            target_user_id = uid
+            target_user_data = data
+            break
+    
+    if not target_user_id:
+        await update.message.reply_text(f"❌ User @{username} not found in database!")
+        return
+    
+    # Add coins
+    old_points = target_user_data.get('points', 0)
+    target_user_data['points'] = old_points + amount
+    
+    await update.message.reply_text(
+        f"✅ Added {amount} coins to @{username}\n"
+        f"Old balance: {old_points}\n"
+        f"New balance: {target_user_data['points']}"
+    )
+    
+    # Notify the user
+    try:
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=f"🎁 **You received {amount} coins from the owner!**\n"
+                 f"Your new balance: {target_user_data['points']} coins",
+            parse_mode='Markdown'
+        )
+    except:
+        pass
+
+async def owner_removecoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner command to remove coins from a user.
+    Usage: /removecoins @username amount
+    """
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("❌ This command is only for bot owner!")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Usage: /removecoins @username amount\n"
+            "Example: /removecoins @john 50"
+        )
+        return
+    
+    username = context.args[0].replace('@', '')
+    try:
+        amount = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Amount must be a number!")
+        return
+    
+    if amount <= 0:
+        await update.message.reply_text("❌ Amount must be positive!")
+        return
+    
+    # Find user by username
+    target_user_id = None
+    target_user_data = None
+    
+    for uid, data in user_data.items():
+        if data.get('username', '').lower() == username.lower():
+            target_user_id = uid
+            target_user_data = data
+            break
+    
+    if not target_user_id:
+        await update.message.reply_text(f"❌ User @{username} not found in database!")
+        return
+    
+    # Remove coins
+    old_points = target_user_data.get('points', 0)
+    new_points = max(0, old_points - amount)  # Don't go below 0
+    target_user_data['points'] = new_points
+    
+    await update.message.reply_text(
+        f"✅ Removed {amount} coins from @{username}\n"
+        f"Old balance: {old_points}\n"
+        f"New balance: {new_points}"
+    )
+
+async def owner_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner command to start a giveaway.
+    Usage: /giveaway amount [duration_minutes]
+    """
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("❌ This command is only for bot owner!")
+        return
+    
+    if len(context.args) < 1:
+        await update.message.reply_text(
+            "❌ Usage: /giveaway amount [duration_minutes]\n"
+            "Example: /giveaway 500 60"
+        )
+        return
+    
+    try:
+        amount = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Amount must be a number!")
+        return
+    
+    duration = 60  # Default 60 minutes
+    if len(context.args) > 1:
+        try:
+            duration = int(context.args[1])
+        except ValueError:
+            await update.message.reply_text("❌ Duration must be a number (minutes)!")
+            return
+    
+    if amount <= 0:
+        await update.message.reply_text("❌ Amount must be positive!")
+        return
+    
+    # Create giveaway
+    giveaway_id = str(int(time.time()))
+    end_time = datetime.now() + timedelta(minutes=duration)
+    
+    active_giveaways[giveaway_id] = {
+        'amount': amount,
+        'end_time': end_time,
+        'participants': [],
+        'creator_id': update.effective_user.id
+    }
+    
+    # Create announcement
+    keyboard = [
+        [InlineKeyboardButton("🎁 Join Giveaway", callback_data=f"giveaway_{giveaway_id}")],
+        [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)],
+        [InlineKeyboardButton("👥 Join Group", url=GROUP_LINK)],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    giveaway_text = (
+        f"🎉 **GIVEAWAY ANNOUNCEMENT!** 🎉\n\n"
+        f"**Prize:** {amount} coins\n"
+        f"**Duration:** {duration} minutes\n"
+        f"**Ends:** {end_time.strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
+        f"**How to enter:**\n"
+        f"1. Click the button below\n"
+        f"2. Join our channel\n"
+        f"3. Wait for the winner announcement!\n\n"
+        f"Good luck everyone! 🍀"
+    )
+    
+    await update.message.reply_text(
+        "✅ Giveaway created successfully!"
+    )
+    
+    # Broadcast to all users (or send to a channel)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=giveaway_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def owner_endgiveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner command to end a giveaway and pick a winner."""
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("❌ This command is only for bot owner!")
+        return
+    
+    if not active_giveaways:
+        await update.message.reply_text("❌ No active giveaways!")
+        return
+    
+    # Show active giveaways
+    text = "**Active Giveaways:**\n\n"
+    keyboard = []
+    
+    for gid, giveaway in active_giveaways.items():
+        text += f"ID: `{gid}`\n"
+        text += f"Prize: {giveaway['amount']} coins\n"
+        text += f"Participants: {len(giveaway['participants'])}\n"
+        text += f"Ends: {giveaway['end_time'].strftime('%H:%M:%S')}\n\n"
+        
+        keyboard.append([InlineKeyboardButton(
+            f"End Giveaway {gid[:8]}...", 
+            callback_data=f"endgiveaway_{gid}"
+        )])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def owner_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner command to see bot statistics."""
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("❌ This command is only for bot owner!")
+        return
+    
+    total_users = len(user_data)
+    total_points = sum(data.get('points', 0) for data in user_data.values())
+    total_games = sum(data.get('games_played', 0) for data in user_data.values())
+    active_giveaways_count = len(active_giveaways)
+    
+    # Top users
+    top_users = sorted(user_data.items(), key=lambda x: x[1].get('points', 0), reverse=True)[:5]
+    
+    stats_text = (
+        f"📊 **BOT STATISTICS** 📊\n\n"
+        f"**General:**\n"
+        f"• Total Users: {total_users}\n"
+        f"• Total Points: {total_points}\n"
+        f"• Games Played: {total_games}\n"
+        f"• Active Giveaways: {active_giveaways_count}\n\n"
+        f"**Top 5 Users:**\n"
+    )
+    
+    for i, (uid, data) in enumerate(top_users, 1):
+        name = data.get('first_name', 'Unknown')
+        points = data.get('points', 0)
+        stats_text += f"{i}. {name} - {points} points\n"
+    
+    await update.message.reply_text(stats_text, parse_mode='Markdown')
+
+async def owner_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner command to broadcast message to all users."""
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("❌ This command is only for bot owner!")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Usage: /broadcast your message here\n"
+            "Example: /broadcast New event starting soon!"
+        )
+        return
+    
+    message = ' '.join(context.args)
+    
+    await update.message.reply_text(
+        f"📢 Broadcasting to {len(user_data)} users...\n"
+        f"Message: {message}"
+    )
+    
+    success = 0
+    failed = 0
+    
+    for user_id in user_data.keys():
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"📢 **Broadcast from Owner:**\n\n{message}",
+                parse_mode='Markdown'
+            )
+            success += 1
+            time.sleep(0.05)  # Small delay to avoid rate limits
+        except:
+            failed += 1
+    
+    await update.message.reply_text(
+        f"✅ Broadcast completed!\n"
+        f"✓ Sent: {success}\n"
+        f"✗ Failed: {failed}"
+    )
+
+# ==================== GIVEAWAY HANDLERS ====================
+
+async def join_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE, giveaway_id: str):
+    """Handle user joining a giveaway."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    username = query.from_user.username or "Anonymous"
+    
+    if giveaway_id not in active_giveaways:
+        await query.edit_message_text(
+            "❌ This giveaway has ended or doesn't exist!"
+        )
+        return
+    
+    giveaway = active_giveaways[giveaway_id]
+    
+    # Check if already joined
+    if user_id in giveaway['participants']:
+        await query.edit_message_text(
+            "❌ You've already joined this giveaway!",
+            show_alert=True
+        )
+        return
+    
+    # Add to participants
+    giveaway['participants'].append(user_id)
+    
+    await query.edit_message_text(
+        f"✅ You've successfully joined the giveaway!\n\n"
+        f"Prize: {giveaway['amount']} coins\n"
+        f"Total participants: {len(giveaway['participants'])}\n\n"
+        f"Good luck! 🍀"
+    )
+
+async def end_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE, giveaway_id: str):
+    """End a giveaway and pick a winner (owner only)."""
+    query = update.callback_query
+    await query.answer()
+    
+    if not is_owner(query.from_user.id):
+        await query.edit_message_text("❌ Only owner can end giveaways!")
+        return
+    
+    if giveaway_id not in active_giveaways:
+        await query.edit_message_text("❌ Giveaway not found!")
+        return
+    
+    giveaway = active_giveaways[giveaway_id]
+    
+    if not giveaway['participants']:
+        await query.edit_message_text(
+            "❌ No participants in this giveaway!\n"
+            "Giveaway cancelled."
+        )
+        del active_giveaways[giveaway_id]
+        return
+    
+    # Pick random winner
+    winner_id = random.choice(giveaway['participants'])
+    winner_data = user_data.get(winner_id, {})
+    winner_name = winner_data.get('first_name', 'Unknown')
+    winner_username = winner_data.get('username', 'No username')
+    
+    # Award prize
+    if winner_id in user_data:
+        user_data[winner_id]['points'] = user_data[winner_id].get('points', 0) + giveaway['amount']
+    
+    # Announce winner
+    winner_text = (
+        f"🎉 **GIVEAWAY WINNER ANNOUNCEMENT!** 🎉\n\n"
+        f"**Prize:** {giveaway['amount']} coins\n"
+        f"**Total Participants:** {len(giveaway['participants'])}\n\n"
+        f"**Winner:** {winner_name} (@{winner_username})\n\n"
+        f"Congratulations! 🎊"
+    )
+    
+    await query.edit_message_text(
+        winner_text,
+        parse_mode='Markdown'
+    )
+    
+    # Notify winner
+    try:
+        await context.bot.send_message(
+            chat_id=winner_id,
+            text=f"🎉 **Congratulations! You won the giveaway!** 🎉\n\n"
+                 f"You received {giveaway['amount']} coins!\n"
+                 f"Your new balance: {user_data[winner_id]['points']}",
+            parse_mode='Markdown'
+        )
+    except:
+        pass
+    
+    # Remove giveaway
+    del active_giveaways[giveaway_id]
+
+# ==================== GAME FUNCTIONS ====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a welcome message when the command /start is issued."""
@@ -109,7 +523,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Create welcome message with buttons
     keyboard = [
-        [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME_CLEAN}")],
+        [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)],
         [InlineKeyboardButton("👥 Join Group", url=GROUP_LINK)],
         [InlineKeyboardButton("🎮 PLAY GAMES 🎮", callback_data='games_menu')],
         [InlineKeyboardButton("💰 Earn Points", callback_data='earn')],
@@ -118,12 +532,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🏆 Leaderboard", callback_data='leaderboard')],
     ]
     
+    # Add owner button if user is owner
+    if is_owner(user_id):
+        keyboard.append([InlineKeyboardButton("👑 Owner Panel", callback_data='owner_panel')])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     welcome_text = (
-        f"🎮 **Welcome to Ankit Hunter Comback!** 🎮\n\n"
+        f"🎮 **Welcome to AKASH Bot!** 🎮\n\n"
         f"Hello {user.first_name}! 👋\n\n"
-        f"Get ready for the ultimate gaming experience with Ankit Hunter Comback!\n\n"
+        f"Get ready for the ultimate gaming experience with AKASH!\n\n"
         f"**What we offer:**\n"
         f"• 🎲 5+ Exciting Games\n"
         f"• 💰 Win Real Points\n"
@@ -135,13 +553,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Games Played: {user_data[user_id]['games_played']}\n"
         f"• Win Rate: {calculate_win_rate(user_id)}%\n\n"
         f"**Our Community:**\n"
-        f"📢 Channel: {CHANNEL_USERNAME}\n"
+        f"📢 Channel: {CHANNEL_USERNAME_DISPLAY}\n"
         f"👥 Group: {GROUP_LINK}\n\n"
         f"👇 **Click PLAY GAMES to start!** 👇"
     )
     
     await update.message.reply_text(
         welcome_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def owner_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show owner panel."""
+    query = update.callback_query
+    await query.answer()
+    
+    if not is_owner(query.from_user.id):
+        await query.edit_message_text("❌ Access denied!")
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton("📊 Bot Statistics", callback_data='owner_stats')],
+        [InlineKeyboardButton("🎁 Create Giveaway", callback_data='owner_create_giveaway')],
+        [InlineKeyboardButton("📢 Broadcast Message", callback_data='owner_broadcast')],
+        [InlineKeyboardButton("💰 Add Coins", callback_data='owner_addcoins')],
+        [InlineKeyboardButton("🔙 Main Menu", callback_data='back_to_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        "👑 **Owner Control Panel** 👑\n\n"
+        "Select an option:",
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
@@ -154,7 +598,6 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user_points = user_data.get(user_id, {}).get('points', 0)
     
-    # Create games menu
     keyboard = [
         [InlineKeyboardButton("🎲 Dice Roll", callback_data='game_dice')],
         [InlineKeyboardButton("🪙 Coin Flip", callback_data='game_coin')],
@@ -186,15 +629,16 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+# ==================== GAME IMPLEMENTATIONS ====================
+
 async def game_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Dice roll game."""
+    """Dice roll game menu."""
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     user_points = user_data.get(user_id, {}).get('points', 0)
     
-    # Create bet options
     keyboard = [
         [InlineKeyboardButton("💰 Bet 10 Points", callback_data='dice_10')],
         [InlineKeyboardButton("💰 Bet 25 Points", callback_data='dice_25')],
@@ -230,11 +674,9 @@ async def play_dice(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int
     
     user_id = query.from_user.id
     
-    # Initialize user if not exists
     if user_id not in user_data:
         user_data[user_id] = {'points': 100, 'games_played': 0, 'games_won': 0, 'total_winnings': 0}
     
-    # Check if user has enough points
     if user_data[user_id]['points'] < bet:
         await query.edit_message_text(
             f"❌ You don't have enough points!\n"
@@ -254,28 +696,23 @@ async def play_dice(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int
     
     # Determine winnings
     if roll <= 3:
-        # Loss
         winnings = 0
         result_text = "❌ You lost!"
         win = False
     elif roll <= 5:
-        # Win double
         winnings = bet * 2
         result_text = "✅ You won double!"
         win = True
     else:
-        # Rolled 6 - win triple
         winnings = bet * 3
         result_text = "🎉 JACKPOT! You won TRIPLE!"
         win = True
     
-    # Add winnings
     if winnings > 0:
         user_data[user_id]['points'] += winnings
         user_data[user_id]['games_won'] += 1
         user_data[user_id]['total_winnings'] += winnings
     
-    # Create dice animation
     dice_faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"]
     
     result_message = (
@@ -289,7 +726,6 @@ async def play_dice(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int
         f"Win Rate: {calculate_win_rate(user_id)}%"
     )
     
-    # Add play again button
     keyboard = [
         [InlineKeyboardButton("🎲 Play Again", callback_data='game_dice')],
         [InlineKeyboardButton("🔙 Games Menu", callback_data='games_menu')],
@@ -304,7 +740,7 @@ async def play_dice(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int
     )
 
 async def game_coin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Coin flip game."""
+    """Coin flip game menu."""
     query = update.callback_query
     await query.answer()
     
@@ -356,15 +792,12 @@ async def play_coin(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int
         )
         return
     
-    # Deduct bet
     user_data[user_id]['points'] -= bet
     user_data[user_id]['games_played'] += 1
     
-    # Flip coin
     flip = random.choice(['Heads', 'Tails'])
     coin_emoji = "🪙 Heads" if flip == 'Heads' else "🪙 Tails"
     
-    # Determine result
     if choice.lower() == flip.lower():
         winnings = bet * 2
         user_data[user_id]['points'] += winnings
@@ -399,7 +832,7 @@ async def play_coin(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int
     )
 
 async def game_slots(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Slot machine game."""
+    """Slot machine game menu."""
     query = update.callback_query
     await query.answer()
     
@@ -451,17 +884,12 @@ async def play_slots(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: in
         )
         return
     
-    # Deduct bet
     user_data[user_id]['points'] -= bet
     user_data[user_id]['games_played'] += 1
     
-    # Slot symbols
     symbols = ['🍒', '🍋', '💎', '7️⃣']
-    
-    # Spin
     result = [random.choice(symbols) for _ in range(3)]
     
-    # Calculate winnings
     multiplier = 0
     if result[0] == result[1] == result[2]:
         if result[0] == '🍒':
@@ -530,7 +958,6 @@ async def game_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"**Achievements:**\n"
     )
     
-    # Add achievements
     achievements = []
     if games_played >= 10:
         achievements.append("🏅 Novice Player - Played 10 games")
@@ -569,7 +996,6 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show top players leaderboard."""
     query = update.callback_query
     
-    # Sort users by points
     sorted_users = sorted(user_data.items(), key=lambda x: x[1].get('points', 0), reverse=True)
     top_users = sorted_users[:10]
     
@@ -599,16 +1025,50 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(leaderboard_text, parse_mode='Markdown')
 
+# ==================== CALLBACK HANDLER ====================
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle all button callbacks."""
     query = update.callback_query
     data = query.data
     
-    # Games menu
-    if data == 'games_menu':
-        await games_menu(update, context)
+    # Owner panel
+    if data == 'owner_panel':
+        await owner_panel(update, context)
+    elif data == 'owner_stats':
+        await owner_stats(update, context)
+    elif data == 'owner_create_giveaway':
+        await query.edit_message_text(
+            "To create a giveaway, use:\n"
+            "`/giveaway amount minutes`\n\n"
+            "Example: `/giveaway 500 60`",
+            parse_mode='Markdown'
+        )
+    elif data == 'owner_broadcast':
+        await query.edit_message_text(
+            "To broadcast a message, use:\n"
+            "`/broadcast your message here`",
+            parse_mode='Markdown'
+        )
+    elif data == 'owner_addcoins':
+        await query.edit_message_text(
+            "To add coins to a user, use:\n"
+            "`/addcoins @username amount`\n\n"
+            "Example: `/addcoins @john 100`",
+            parse_mode='Markdown'
+        )
     
-    # Individual games
+    # Giveaway handling
+    elif data.startswith('giveaway_'):
+        giveaway_id = data.replace('giveaway_', '')
+        await join_giveaway(update, context, giveaway_id)
+    elif data.startswith('endgiveaway_'):
+        giveaway_id = data.replace('endgiveaway_', '')
+        await end_giveaway(update, context, giveaway_id)
+    
+    # Games menu
+    elif data == 'games_menu':
+        await games_menu(update, context)
     elif data == 'game_dice':
         await game_dice(update, context)
     elif data == 'game_coin':
@@ -639,7 +1099,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'leaderboard':
         await leaderboard(update, context)
     
-    # Original callbacks
+    # Other menus
     elif data == 'earn':
         points = user_data.get(query.from_user.id, {}).get('points', 0)
         earn_text = (
@@ -648,7 +1108,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Invite friends (+50 points each)\n"
             "• Daily check-in (+10 points)\n"
             "• Win games (varies)\n"
-            "• Participate in tournaments (+100 points)\n"
+            "• Participate in giveaways (BIG prizes!)\n"
             "• Top players bonus (+500 points)\n\n"
             f"Your current points: {points}\n\n"
             "Use /checkin to claim your daily points!"
@@ -695,7 +1155,7 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     
     keyboard = [
-        [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME_CLEAN}")],
+        [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)],
         [InlineKeyboardButton("👥 Join Group", url=GROUP_LINK)],
         [InlineKeyboardButton("🎮 PLAY GAMES 🎮", callback_data='games_menu')],
         [InlineKeyboardButton("💰 Earn Points", callback_data='earn')],
@@ -704,17 +1164,22 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🏆 Leaderboard", callback_data='leaderboard')],
     ]
     
+    if is_owner(user_id):
+        keyboard.append([InlineKeyboardButton("👑 Owner Panel", callback_data='owner_panel')])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     user_stats = user_data.get(user_id, {})
     
     await query.edit_message_text(
-        f"🎮 **Ankit Hunter Comback Menu** 🎮\n\n"
+        f"🎮 **AKASH Bot Menu** 🎮\n\n"
         f"Welcome back! Your points: **{user_stats.get('points', 0)}**\n\n"
         f"Choose an option below:",
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+
+# ==================== OTHER COMMANDS ====================
 
 async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send promotional message."""
@@ -722,15 +1187,15 @@ async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("🎮 Play Games Now", callback_data='games_menu')],
-        [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME_CLEAN}")],
+        [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)],
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     full_promo = (
         f"{promo_text}\n\n"
-        f"🔗 **Join Ankit Hunter Comback today!**\n"
-        f"Channel: {CHANNEL_USERNAME}\n\n"
+        f"🔗 **Join AKASH today!**\n"
+        f"Channel: {CHANNEL_USERNAME_DISPLAY}\n\n"
         f"Click below to start playing!"
     )
     
@@ -765,7 +1230,6 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ You've already checked in today! Come back tomorrow.")
         return
     
-    # Award points
     user_data[user_id]['points'] += 10
     user_data[user_id]['last_checkin'] = datetime.now()
     
@@ -819,7 +1283,7 @@ async def post_init(application: Application):
 def main():
     """Start the bot."""
     try:
-        logger.info(f"Starting bot with token: {BOT_TOKEN[:10]}...")
+        logger.info(f"Starting AKASH Bot with token: {BOT_TOKEN[:10]}...")
         
         application = (
             Application.builder()
@@ -834,6 +1298,14 @@ def main():
         application.add_handler(CommandHandler("checkin", checkin))
         application.add_handler(CommandHandler("leaderboard", leaderboard))
         
+        # Owner commands
+        application.add_handler(CommandHandler("addcoins", owner_addcoins))
+        application.add_handler(CommandHandler("removecoins", owner_removecoins))
+        application.add_handler(CommandHandler("giveaway", owner_giveaway))
+        application.add_handler(CommandHandler("endgiveaway", owner_endgiveaway))
+        application.add_handler(CommandHandler("stats", owner_stats))
+        application.add_handler(CommandHandler("broadcast", owner_broadcast))
+        
         # Add callback query handler
         application.add_handler(CallbackQueryHandler(button_callback))
         
@@ -843,7 +1315,7 @@ def main():
         # Add error handler
         application.add_error_handler(error_handler)
         
-        logger.info("🤖 Ankit Hunter Comback Bot is starting...")
+        logger.info("🤖 AKASH Bot is starting...")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
