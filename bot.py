@@ -82,14 +82,14 @@ games = {
 
 # Promotion messages
 PROMO_MESSAGES = [
-    "🔥 Welcome to AKASH Bot! The ultimate gaming experience awaits!",
-    "🎮 Join AKASH for exclusive gaming content and tips!",
-    "⚡ Level up your gaming skills with AKASH!",
-    "🏆 Become a champion with AKASH community!",
-    "🎯 Get pro gaming strategies only at AKASH!",
-    "💫 New gaming content daily at AKASH!",
-    "🚀 Join thousands of gamers at AKASH!",
-    "🎲 Exclusive giveaways and contests at AKASH!",
+    "🔥 Welcome to GAMELY! The ultimate gaming experience awaits!",
+    "🎮 Join GAMELY for exclusive gaming content and tips!",
+    "⚡ Level up your gaming skills with GAMELY!",
+    "🏆 Become a champion with GAMELY community!",
+    "🎯 Get pro gaming strategies only at GAMELY!",
+    "💫 New gaming content daily at GAMELY!",
+    "🚀 Join thousands of gamers at GAMELY!",
+    "🎲 Exclusive giveaways and contests at GAMELY!",
 ]
 
 # ==================== HELPER FUNCTIONS ====================
@@ -666,7 +666,7 @@ async def contact_owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact_text = (
         "📞 **Contact Bot Owner** 📞\n\n"
         "Need help? Have questions? Want to report an issue?\n\n"
-        f"**Owner:** AKASH\n"
+        f"**Owner:** AAKASH\n"
         f"**User ID:** `{OWNER_ID}`\n\n"
         "Click the button below to send a direct message to the owner:\n"
         "👇"
@@ -693,7 +693,7 @@ async def contact_owner_button(update: Update, context: ContextTypes.DEFAULT_TYP
     contact_text = (
         "📞 **Contact Bot Owner** 📞\n\n"
         "Need help? Have questions? Want to report an issue?\n\n"
-        f"**Owner:** AKASH\n"
+        f"**Owner:** AAKASH\n"
         f"**User ID:** `{OWNER_ID}`\n\n"
         "Click the button below to send a direct message to the owner:"
     )
@@ -1047,20 +1047,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     welcome_text = (
-        f"🎮 **Welcome to AKASH Bot!** 🎮\n\n"
+        f"🎮 **Welcome to GAMELY!** 🎮\n\n"
         f"Hello {user['first_name']}! 👋\n\n"
-        f"**Your Stats:**\n"
-        f"• Points: {user['points']}\n"
-        f"• Games Played: {user['games_played']}\n"
-        f"• Win Rate: {calculate_win_rate(user_id)}%\n\n"
-        f"**Group Games:**\n"
-        f"• /dice [bet] - Play dice in group\n"
-        f"• /coin [heads/tails] [bet] - Flip coin\n"
-        f"• /slots [bet] - Play slots\n"
-        f"• /balance - Check your balance\n\n"
-        f"**Need Help?**\n"
-        f"• Use /contact to message the owner\n\n"
-        f"👇 **Click PLAY GAMES to start!** 👇"
+        f"Get ready for the ultimate gaming experience with GAMELY!\n\n"
+        f"**What we offer:**\n"
+        f"• Exclusive gaming content\n"
+        f"• Pro tips and strategies\n"
+        f"• Daily giveaways\n"
+        f"• Gaming community\n"
+        f"• Earn points and rewards\n\n"
+        f"**Our Community:**\n"
+        f"📢 Channel: {CHANNEL_LINK}\n"
+        f"👥 Group: {GROUP_LINK}\n\n"
+        f"#Developed by AAKASH\n\n"
+        f"👇 **Use the buttons below to get started!** 👇"
     )
     
     await update.message.reply_text(
@@ -1671,8 +1671,12 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_stats = user_data.get(user_id, {})
     
     await query.edit_message_text(
-        f"🎮 **AKASH Bot Menu** 🎮\n\n"
+        f"🎮 **Welcome to GAMELY!** 🎮\n\n"
         f"Welcome back! Your points: **{user_stats.get('points', 0)}**\n\n"
+        f"**Our Community:**\n"
+        f"📢 Channel: {CHANNEL_LINK}\n"
+        f"👥 Group: {GROUP_LINK}\n\n"
+        f"#Developed by AAKASH\n\n"
         f"Choose an option below:",
         reply_markup=reply_markup,
         parse_mode='Markdown'
@@ -1693,7 +1697,7 @@ async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     full_promo = (
         f"{promo_text}\n\n"
-        f"🔗 **Join AKASH today!**\n"
+        f"🔗 **Join GAMELY today!**\n"
         f"Channel: {CHANNEL_USERNAME_DISPLAY}\n\n"
         f"Click below to start playing!"
     )
@@ -1786,7 +1790,7 @@ async def post_init(application: Application):
 def main():
     """Start the bot."""
     try:
-        logger.info(f"Starting AKASH Bot with token: {BOT_TOKEN[:10]}...")
+        logger.info(f"Starting GAMELY Bot with token: {BOT_TOKEN[:10]}...")
         
         application = (
             Application.builder()
@@ -1828,7 +1832,7 @@ def main():
         # Add error handler
         application.add_error_handler(error_handler)
         
-        logger.info("🤖 AKASH Bot is starting...")
+        logger.info("🤖 GAMELY Bot is starting...")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
