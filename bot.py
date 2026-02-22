@@ -35,8 +35,8 @@ if OWNER_ID == 0:
 
 # Channel and Group Configuration
 CHANNEL_USERNAME = os.environ.get('CHANNEL_USERNAME', '@thehindigroup')
-CHANNEL_LINK = os.environ.get('CHANNEL_LINK', 'https://t.me/+Uc3SnOfhASEzZDcx')
-GROUP_LINK = os.environ.get('GROUP_LINK', 'https://t.me/ankithuntergroup')
+CHANNEL_LINK = os.environ.get('CHANNEL_LINK', 'https://t.me/thehindigroup')
+GROUP_LINK = os.environ.get('GROUP_LINK', 'https://t.me/+Uc3SnOfhASEzZDcx')
 
 # Clean channel username for display
 if CHANNEL_USERNAME.startswith('@'):
