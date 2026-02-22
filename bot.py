@@ -1,6 +1,6 @@
 import os
 import logging
-import asyncio
+import sys
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -14,21 +14,24 @@ from telegram.ext import (
 import random
 
 # Enable logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+logging.basicFormat = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Configuration
+# Configuration with error handling
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
+if not BOT_TOKEN:
+    logger.error("CRITICAL: BOT_TOKEN environment variable is not set!")
+    logger.error("Please set BOT_TOKEN in Railway environment variables")
+    sys.exit(1)
+
 BOT_USERNAME = "AnkitHunterBot"
-CHANNEL_USERNAME = "@ankithuntercomback"  # Your channel username
-GROUP_LINK = "https://t.me/ankithuntergroup"  # Your group link
+CHANNEL_USERNAME = "@ankithuntercomback"  # Change this to your channel
+GROUP_LINK = "https://t.me/ankithuntergroup"  # Change this to your group
 
 # Store user data (in production, use database)
 user_data = {}
-broadcast_messages = []
 
 # Promotion messages
 PROMO_MESSAGES = [
@@ -55,7 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'joined_date': datetime.now(),
             'points': 0,
             'referrals': 0,
-            'last_promo': None
+            'last_checkin': None
         }
     
     # Create welcome message with buttons
@@ -91,8 +94,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send promotional message about Ankit Hunter Comback."""
-    user = update.effective_user
-    
     # Select random promo message
     promo_text = random.choice(PROMO_MESSAGES)
     
@@ -137,6 +138,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(games_text, parse_mode='Markdown')
         
     elif query.data == 'earn':
+        points = user_data.get(user_id, {}).get('points', 0)
         earn_text = (
             "💰 **Earn Points** 💰\n\n"
             "**Ways to earn:**\n"
@@ -145,7 +147,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Share content (+20 points)\n"
             "• Participate in events (+100 points)\n"
             "• Top referrals bonus (+500 points)\n\n"
-            f"Your current points: {user_data.get(user_id, {}).get('points', 0)}"
+            f"Your current points: {points}\n\n"
+            "Use /checkin to claim your daily points!"
         )
         await query.edit_message_text(earn_text, parse_mode='Markdown')
         
@@ -162,15 +165,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(stats_text, parse_mode='Markdown')
         
     elif query.data == 'refer':
+        user_stats = user_data.get(user_id, {})
+        bot_username = (await context.bot.get_me()).username
         refer_text = (
             "🤝 **Refer Friends** 🤝\n\n"
             f"Share this link to earn points:\n"
-            f"`https://t.me/{BOT_USERNAME}?start={user_id}`\n\n"
+            f"`https://t.me/{bot_username}?start={user_id}`\n\n"
             "**Benefits:**\n"
             "• 50 points per referral\n"
             "• Bonus for top referrers\n"
             "• Exclusive rewards\n\n"
-            f"Total referrals: {user_data.get(user_id, {}).get('referrals', 0)}"
+            f"Total referrals: {user_stats.get('referrals', 0)}"
         )
         await query.edit_message_text(refer_text, parse_mode='Markdown')
     
@@ -200,35 +205,15 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Broadcast message to all users (admin only)."""
-    # Check if user is admin
-    admin_id = int(os.environ.get('ADMIN_ID', 0))
-    if update.effective_user.id != admin_id:
-        await update.message.reply_text("❌ You are not authorized to use this command.")
-        return
-    
-    if not context.args:
-        await update.message.reply_text(
-            "Usage: /broadcast <message>\n"
-            "Example: /broadcast New event starting soon!"
-        )
-        return
-    
-    broadcast_msg = ' '.join(context.args)
-    broadcast_messages.append(broadcast_msg)
-    
-    # In production, you would store this in database and send to all users
-    await update.message.reply_text(f"✅ Broadcast message saved:\n\n{broadcast_msg}")
-
-async def daily_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Daily check-in to earn points."""
-    user_id = update.effective_user.id
+    user = update.effective_user
+    user_id = user.id
     
     if user_id not in user_data:
         user_data[user_id] = {
-            'username': update.effective_user.username,
-            'first_name': update.effective_user.first_name,
+            'username': user.username,
+            'first_name': user.first_name,
             'joined_date': datetime.now(),
             'points': 0,
             'referrals': 0,
@@ -258,12 +243,30 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         referrer_id = int(context.args[0])
         new_user_id = update.effective_user.id
         
-        if referrer_id != new_user_id and referrer_id in user_data:
+        if referrer_id != new_user_id:
+            # Initialize if not exists
+            if referrer_id not in user_data:
+                user_data[referrer_id] = {
+                    'points': 0,
+                    'referrals': 0,
+                    'last_checkin': None
+                }
+            
             user_data[referrer_id]['points'] += 50
             user_data[referrer_id]['referrals'] += 1
             
-            # Notify referrer (in production, send message)
-            logger.info(f"Referral successful: {referrer_id} referred {new_user_id}")
+            # Welcome the new user
+            await start(update, context)
+            
+            # Try to notify referrer (if they've started the bot)
+            try:
+                await context.bot.send_message(
+                    chat_id=referrer_id,
+                    text=f"🎉 Great news! Someone joined using your referral link!\n"
+                         f"You earned 50 points! Total points: {user_data[referrer_id]['points']}"
+                )
+            except:
+                pass  # Referrer hasn't started the bot
 
 def get_user_rank(points):
     """Get user rank based on points."""
@@ -280,29 +283,46 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log errors."""
     logger.error(f"Update {update} caused error {context.error}")
 
+async def post_init(application: Application):
+    """Post initialization hook."""
+    bot_info = await application.bot.get_me()
+    logger.info(f"Bot started: @{bot_info.username}")
+
 def main():
     """Start the bot."""
-    # Create application
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Add command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("promo", promo))
-    application.add_handler(CommandHandler("broadcast", broadcast))
-    application.add_handler(CommandHandler("checkin", daily_checkin))
-    
-    # Add callback query handler
-    application.add_handler(CallbackQueryHandler(button_callback))
-    
-    # Add message handler for referral links
-    application.add_handler(MessageHandler(filters.Regex(r'^/start \d+$'), handle_referral))
-    
-    # Add error handler
-    application.add_error_handler(error_handler)
-    
-    # Start bot
-    print("🤖 Ankit Hunter Comback Bot is starting...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        # Create application with proper error handling
+        logger.info(f"Starting bot with token: {BOT_TOKEN[:10]}...")
+        
+        application = (
+            Application.builder()
+            .token(BOT_TOKEN)
+            .post_init(post_init)
+            .build()
+        )
+        
+        # Add command handlers
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("promo", promo))
+        application.add_handler(CommandHandler("checkin", checkin))
+        
+        # Add callback query handler
+        application.add_handler(CallbackQueryHandler(button_callback))
+        application.add_handler(CallbackQueryHandler(back_to_menu, pattern='^back_to_menu$'))
+        
+        # Add message handler for referral links
+        application.add_handler(MessageHandler(filters.Regex(r'^/start \d+$'), handle_referral))
+        
+        # Add error handler
+        application.add_error_handler(error_handler)
+        
+        # Start bot
+        logger.info("🤖 Ankit Hunter Comback Bot is starting...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
