@@ -3,6 +3,7 @@ import logging
 import sys
 import random
 import json
+import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -123,7 +124,7 @@ def calculate_win_rate(user_id):
         return 0
     return round((games_won / games_played) * 100)
 
-# ==================== FIXED OWNER COMMANDS ====================
+# ==================== OWNER COMMANDS ====================
 
 async def owner_addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Owner command to add coins to a user.
@@ -226,14 +227,12 @@ async def owner_addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Find user by username (case-insensitive)
     target_user_id = None
     target_user_data = None
-    target_first_name = None
     
     for uid, data in user_data.items():
         db_username = data.get('username', '')
         if db_username and db_username.lower() == username:
             target_user_id = uid
             target_user_data = data
-            target_first_name = data.get('first_name', username)
             break
     
     if not target_user_id:
@@ -485,7 +484,7 @@ async def owner_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
             success += 1
-            time.sleep(0.05)  # Small delay to avoid rate limits
+            await asyncio.sleep(0.05)  # Small delay to avoid rate limits
         except:
             failed += 1
     
@@ -493,6 +492,216 @@ async def owner_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Broadcast completed!\n"
         f"✓ Sent: {success}\n"
         f"✗ Failed: {failed}"
+    )
+
+# ==================== BROADCAST FUNCTIONS ====================
+
+async def owner_broadcast_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show broadcast panel in owner menu."""
+    query = update.callback_query
+    await query.answer()
+    
+    if not is_owner(query.from_user.id):
+        await query.edit_message_text("❌ Access denied!")
+        return
+    
+    text = (
+        "📢 **Broadcast Message** 📢\n\n"
+        "You can send a message to all bot users.\n\n"
+        f"**Total Users:** {len(user_data)}\n\n"
+        "**Options:**\n"
+        "1️⃣ **Quick Broadcast** - Use `/broadcast your message`\n"
+        "2️⃣ **Interactive Broadcast** - Click the button below\n\n"
+        "Click the button to start interactive broadcast:"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("📝 Start Interactive Broadcast", callback_data='start_broadcast')],
+        [InlineKeyboardButton("🔙 Back to Owner Panel", callback_data='owner_panel')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def start_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start interactive broadcast process."""
+    query = update.callback_query
+    await query.answer()
+    
+    if not is_owner(query.from_user.id):
+        await query.edit_message_text("❌ Access denied!")
+        return
+    
+    # Set flag that we're waiting for broadcast message
+    context.user_data['waiting_for_broadcast'] = True
+    
+    text = (
+        "📝 **Send your broadcast message**\n\n"
+        "Please type the message you want to send to all users.\n"
+        f"Total recipients: {len(user_data)} users\n\n"
+        "Type your message below (or /cancel to cancel):"
+    )
+    
+    keyboard = [[InlineKeyboardButton("🔙 Cancel", callback_data='owner_broadcast_panel')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def handle_broadcast_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle broadcast message input from owner."""
+    user_id = update.effective_user.id
+    
+    if not is_owner(user_id):
+        return
+    
+    # Check if we're waiting for a broadcast message
+    if not context.user_data.get('waiting_for_broadcast'):
+        return
+    
+    message_text = update.message.text
+    
+    # Check if user wants to cancel
+    if message_text.lower() == '/cancel':
+        context.user_data['waiting_for_broadcast'] = False
+        await update.message.reply_text("❌ Broadcast cancelled.")
+        return
+    
+    # Clear the waiting flag
+    context.user_data['waiting_for_broadcast'] = False
+    
+    # Store message in context for confirmation
+    context.user_data['broadcast_message'] = message_text
+    
+    # Preview and confirm
+    keyboard = [
+        [InlineKeyboardButton("✅ Send to All Users", callback_data='confirm_broadcast')],
+        [InlineKeyboardButton("📝 Edit Message", callback_data='start_broadcast')],
+        [InlineKeyboardButton("❌ Cancel", callback_data='owner_broadcast_panel')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"📢 **Preview your broadcast:**\n\n{message_text}\n\n"
+        f"**Recipients:** {len(user_data)} users\n\n"
+        f"Do you want to send this message?",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm and send broadcast message."""
+    query = update.callback_query
+    await query.answer()
+    
+    if not is_owner(query.from_user.id):
+        await query.edit_message_text("❌ Access denied!")
+        return
+    
+    message = context.user_data.get('broadcast_message')
+    if not message:
+        await query.edit_message_text("❌ No message found! Please try again.")
+        return
+    
+    await query.edit_message_text(
+        f"📢 Broadcasting to {len(user_data)} users...\n"
+        f"Please wait..."
+    )
+    
+    success = 0
+    failed = 0
+    
+    for user_id in user_data.keys():
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"📢 **Broadcast from Owner:**\n\n{message}",
+                parse_mode='Markdown'
+            )
+            success += 1
+            await asyncio.sleep(0.05)  # Small delay to avoid rate limits
+        except Exception as e:
+            failed += 1
+            logger.error(f"Failed to send broadcast to {user_id}: {e}")
+    
+    # Clear stored message
+    context.user_data.pop('broadcast_message', None)
+    
+    keyboard = [[InlineKeyboardButton("🔙 Back to Broadcast Panel", callback_data='owner_broadcast_panel')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await context.bot.send_message(
+        chat_id=query.from_user.id,
+        text=f"✅ **Broadcast completed!**\n\n"
+             f"✓ Successfully sent: {success}\n"
+             f"✗ Failed: {failed}\n"
+             f"📊 Total users: {len(user_data)}",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+# ==================== CONTACT OWNER FUNCTIONS ====================
+
+async def contact_owner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle contact owner command."""
+    user = update.effective_user
+    
+    # Create contact button
+    keyboard = [
+        [InlineKeyboardButton("📩 Message Owner", url=f"tg://user?id={OWNER_ID}")],
+        [InlineKeyboardButton("🔙 Main Menu", callback_data='back_to_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    contact_text = (
+        "📞 **Contact Bot Owner** 📞\n\n"
+        "Need help? Have questions? Want to report an issue?\n\n"
+        f"**Owner:** AKASH\n"
+        f"**User ID:** `{OWNER_ID}`\n\n"
+        "Click the button below to send a direct message to the owner:\n"
+        "👇"
+    )
+    
+    await update.message.reply_text(
+        contact_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def contact_owner_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle contact owner button from menu."""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("📩 Message Owner", url=f"tg://user?id={OWNER_ID}")],
+        [InlineKeyboardButton("🔙 Main Menu", callback_data='back_to_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    contact_text = (
+        "📞 **Contact Bot Owner** 📞\n\n"
+        "Need help? Have questions? Want to report an issue?\n\n"
+        f"**Owner:** AKASH\n"
+        f"**User ID:** `{OWNER_ID}`\n\n"
+        "Click the button below to send a direct message to the owner:"
+    )
+    
+    await query.edit_message_text(
+        contact_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
     )
 
 # ==================== GROUP GAME COMMANDS ====================
@@ -828,6 +1037,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📊 My Stats", callback_data='stats')],
         [InlineKeyboardButton("🤝 Refer Friends", callback_data='refer')],
         [InlineKeyboardButton("🏆 Leaderboard", callback_data='leaderboard')],
+        [InlineKeyboardButton("📞 Contact Owner", callback_data='contact_owner')],
     ]
     
     # Add owner button if user is owner
@@ -848,6 +1058,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• /coin [heads/tails] [bet] - Flip coin\n"
         f"• /slots [bet] - Play slots\n"
         f"• /balance - Check your balance\n\n"
+        f"**Need Help?**\n"
+        f"• Use /contact to message the owner\n\n"
         f"👇 **Click PLAY GAMES to start!** 👇"
     )
     
@@ -858,7 +1070,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def owner_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show owner panel."""
+    """Show owner panel with broadcast option."""
     query = update.callback_query
     await query.answer()
     
@@ -870,6 +1082,7 @@ async def owner_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📊 Bot Statistics", callback_data='owner_stats')],
         [InlineKeyboardButton("🎁 Create Giveaway", callback_data='owner_create_giveaway')],
         [InlineKeyboardButton("💰 Add Coins", callback_data='owner_addcoins')],
+        [InlineKeyboardButton("📢 Broadcast Message", callback_data='owner_broadcast_panel')],
         [InlineKeyboardButton("🔙 Main Menu", callback_data='back_to_menu')],
     ]
     
@@ -1318,22 +1531,30 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "To create a giveaway, use:\n"
             "`/giveaway amount minutes`\n\n"
-            "Example: `/giveaway 500 60`",
+            "Example: `/giveaway 500 60`\n\n"
+            "Or use the command in chat.",
             parse_mode='Markdown'
         )
-    elif data == 'owner_broadcast':
-        await query.edit_message_text(
-            "To broadcast a message, use:\n"
-            "`/broadcast your message here`",
-            parse_mode='Markdown'
-        )
+    elif data == 'owner_broadcast_panel':
+        await owner_broadcast_panel(update, context)
+    elif data == 'start_broadcast':
+        await start_broadcast(update, context)
+    elif data == 'confirm_broadcast':
+        await confirm_broadcast(update, context)
     elif data == 'owner_addcoins':
         await query.edit_message_text(
             "To add coins to a user, use:\n"
             "`/addcoins @username amount`\n\n"
-            "Example: `/addcoins @john 100`",
+            "Or reply to a user with: `/addcoins amount`\n\n"
+            "Examples:\n"
+            "• `/addcoins @john 100`\n"
+            "• `/addcoins 100` (while replying)",
             parse_mode='Markdown'
         )
+    
+    # Contact owner
+    elif data == 'contact_owner':
+        await contact_owner_button(update, context)
     
     # Giveaway handling
     elif data.startswith('giveaway_'):
@@ -1439,6 +1660,7 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📊 My Stats", callback_data='stats')],
         [InlineKeyboardButton("🤝 Refer Friends", callback_data='refer')],
         [InlineKeyboardButton("🏆 Leaderboard", callback_data='leaderboard')],
+        [InlineKeyboardButton("📞 Contact Owner", callback_data='contact_owner')],
     ]
     
     if is_owner(user_id):
@@ -1578,6 +1800,7 @@ def main():
         application.add_handler(CommandHandler("promo", promo))
         application.add_handler(CommandHandler("checkin", checkin))
         application.add_handler(CommandHandler("leaderboard", leaderboard))
+        application.add_handler(CommandHandler("contact", contact_owner))
         
         # Group game commands
         application.add_handler(CommandHandler("dice", group_dice))
@@ -1595,6 +1818,9 @@ def main():
         
         # Add callback query handler
         application.add_handler(CallbackQueryHandler(button_callback))
+        
+        # Add message handler for broadcast input
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_broadcast_input))
         
         # Add message handler for referral links
         application.add_handler(MessageHandler(filters.Regex(r'^/start \d+$'), handle_referral))
