@@ -1,7 +1,9 @@
 import os
 import logging
 import sys
-from datetime import datetime
+import random
+import json
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -11,28 +13,68 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
-import random
+import time
 
-# Enable logging - FIXED THE SYNTAX ERROR HERE
+# Enable logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Configuration with error handling
+# Configuration
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 if not BOT_TOKEN:
     logger.error("CRITICAL: BOT_TOKEN environment variable is not set!")
-    logger.error("Please set BOT_TOKEN in Railway environment variables")
     sys.exit(1)
 
-BOT_USERNAME = "AnkitHunterBot"
-CHANNEL_USERNAME = "@Thehindigroup"  # Change this to your channel
-GROUP_LINK = "https://t.me/+Uc3SnOfhASEzZDcx"  # Change this to your group
+# Channel and Group Configuration
+CHANNEL_USERNAME = os.environ.get('CHANNEL_USERNAME', '@ankithuntercomback')
+GROUP_LINK = os.environ.get('GROUP_LINK', 'https://t.me/ankithuntergroup')
 
-# Store user data (in production, use database)
+if CHANNEL_USERNAME.startswith('@'):
+    CHANNEL_USERNAME_CLEAN = CHANNEL_USERNAME[1:]
+else:
+    CHANNEL_USERNAME_CLEAN = CHANNEL_USERNAME
+
+logger.info(f"Bot configured for channel: {CHANNEL_USERNAME}")
+
+# Store user data
 user_data = {}
+
+# Game data
+games = {
+    'dice': {
+        'name': '🎲 Dice Roll',
+        'description': 'Roll the dice and win up to 100 points!',
+        'min_bet': 10,
+        'max_bet': 100
+    },
+    'coin': {
+        'name': '🪙 Coin Flip',
+        'description': 'Heads or Tails? Double your points!',
+        'min_bet': 5,
+        'max_bet': 50
+    },
+    'slots': {
+        'name': '🎰 Slot Machine',
+        'description': 'Spin and win big jackpots!',
+        'min_bet': 20,
+        'max_bet': 200
+    },
+    'number': {
+        'name': '🔢 Number Guess',
+        'description': 'Guess the number (1-10) and win 3x your bet!',
+        'min_bet': 15,
+        'max_bet': 150
+    },
+    'rps': {
+        'name': '✂️ Rock Paper Scissors',
+        'description': 'Play against the bot and win!',
+        'min_bet': 10,
+        'max_bet': 100
+    }
+}
 
 # Promotion messages
 PROMO_MESSAGES = [
@@ -57,19 +99,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'username': user.username,
             'first_name': user.first_name,
             'joined_date': datetime.now(),
-            'points': 0,
+            'points': 100,  # Starting bonus
             'referrals': 0,
-            'last_checkin': None
+            'last_checkin': None,
+            'games_played': 0,
+            'games_won': 0,
+            'total_winnings': 0
         }
     
     # Create welcome message with buttons
     keyboard = [
-        [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
+        [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME_CLEAN}")],
         [InlineKeyboardButton("👥 Join Group", url=GROUP_LINK)],
-        [InlineKeyboardButton("🎮 Play Games", callback_data='games')],
+        [InlineKeyboardButton("🎮 PLAY GAMES 🎮", callback_data='games_menu')],
         [InlineKeyboardButton("💰 Earn Points", callback_data='earn')],
         [InlineKeyboardButton("📊 My Stats", callback_data='stats')],
         [InlineKeyboardButton("🤝 Refer Friends", callback_data='refer')],
+        [InlineKeyboardButton("🏆 Leaderboard", callback_data='leaderboard')],
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -79,12 +125,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Hello {user.first_name}! 👋\n\n"
         f"Get ready for the ultimate gaming experience with Ankit Hunter Comback!\n\n"
         f"**What we offer:**\n"
-        f"• Exclusive gaming content\n"
-        f"• Pro tips and strategies\n"
-        f"• Daily giveaways\n"
-        f"• Gaming community\n"
-        f"• Earn points and rewards\n\n"
-        f"Use the buttons below to get started!"
+        f"• 🎲 5+ Exciting Games\n"
+        f"• 💰 Win Real Points\n"
+        f"• 🏆 Daily Tournaments\n"
+        f"• 🎁 Weekly Giveaways\n"
+        f"• 🤝 Referral Bonuses\n\n"
+        f"**Your Stats:**\n"
+        f"• Points: {user_data[user_id]['points']}\n"
+        f"• Games Played: {user_data[user_id]['games_played']}\n"
+        f"• Win Rate: {calculate_win_rate(user_id)}%\n\n"
+        f"**Our Community:**\n"
+        f"📢 Channel: {CHANNEL_USERNAME}\n"
+        f"👥 Group: {GROUP_LINK}\n\n"
+        f"👇 **Click PLAY GAMES to start!** 👇"
     )
     
     await update.message.reply_text(
@@ -93,85 +146,536 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send promotional message about Ankit Hunter Comback."""
-    # Select random promo message
-    promo_text = random.choice(PROMO_MESSAGES)
+async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show games menu."""
+    query = update.callback_query
+    await query.answer()
     
-    # Create promotional keyboard
+    user_id = query.from_user.id
+    user_points = user_data.get(user_id, {}).get('points', 0)
+    
+    # Create games menu
     keyboard = [
-        [InlineKeyboardButton("🎮 Join Now", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
-        [InlineKeyboardButton("👥 Community", url=GROUP_LINK)],
+        [InlineKeyboardButton("🎲 Dice Roll", callback_data='game_dice')],
+        [InlineKeyboardButton("🪙 Coin Flip", callback_data='game_coin')],
+        [InlineKeyboardButton("🎰 Slot Machine", callback_data='game_slots')],
+        [InlineKeyboardButton("🔢 Number Guess", callback_data='game_number')],
+        [InlineKeyboardButton("✂️ Rock Paper Scissors", callback_data='game_rps')],
+        [InlineKeyboardButton("🏆 Daily Tournament", callback_data='tournament')],
+        [InlineKeyboardButton("📊 My Game Stats", callback_data='game_stats')],
+        [InlineKeyboardButton("🔙 Main Menu", callback_data='back_to_menu')],
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    full_promo = (
-        f"{promo_text}\n\n"
-        f"🔗 **Join Ankit Hunter Comback today!**\n"
-        f"Channel: {CHANNEL_USERNAME}\n"
-        f"Group: {GROUP_LINK}\n\n"
-        f"Don't miss out on the action! 🎯"
+    games_text = (
+        f"🎮 **GAMES MENU** 🎮\n\n"
+        f"Your Points: **{user_points}** 💰\n\n"
+        f"**Available Games:**\n"
+        f"🎲 Dice Roll - Win up to 100 points\n"
+        f"🪙 Coin Flip - Double your points\n"
+        f"🎰 Slot Machine - Win big jackpots\n"
+        f"🔢 Number Guess - 3x your bet\n"
+        f"✂️ Rock Paper Scissors - Beat the bot\n\n"
+        f"**Select a game to play:**"
     )
     
-    await update.message.reply_text(
-        full_promo,
+    await query.edit_message_text(
+        games_text,
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle button callback queries."""
+async def game_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dice roll game."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    user_points = user_data.get(user_id, {}).get('points', 0)
+    
+    # Create bet options
+    keyboard = [
+        [InlineKeyboardButton("💰 Bet 10 Points", callback_data='dice_10')],
+        [InlineKeyboardButton("💰 Bet 25 Points", callback_data='dice_25')],
+        [InlineKeyboardButton("💰 Bet 50 Points", callback_data='dice_50')],
+        [InlineKeyboardButton("💰 Bet 100 Points", callback_data='dice_100')],
+        [InlineKeyboardButton("🔙 Back to Games", callback_data='games_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    dice_text = (
+        f"🎲 **DICE ROLL** 🎲\n\n"
+        f"Your Points: **{user_points}**\n\n"
+        f"**How to play:**\n"
+        f"• Choose your bet amount\n"
+        f"• Roll higher than 3 to win!\n"
+        f"• Roll 1-3: You lose\n"
+        f"• Roll 4-6: You win double!\n"
+        f"• Roll 6: You win triple!\n\n"
+        f"Select your bet amount:"
+    )
+    
+    await query.edit_message_text(
+        dice_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def play_dice(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int):
+    """Play dice game with specific bet."""
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     
-    if query.data == 'games':
-        games_text = (
-            "🎮 **Available Games** 🎮\n\n"
-            "• Ankit Hunter Adventure\n"
-            "• Comback Racing\n"
-            "• Hunter Puzzle\n"
-            "• Weekly Tournaments\n\n"
-            "More games coming soon!"
+    # Initialize user if not exists
+    if user_id not in user_data:
+        user_data[user_id] = {'points': 100, 'games_played': 0, 'games_won': 0, 'total_winnings': 0}
+    
+    # Check if user has enough points
+    if user_data[user_id]['points'] < bet:
+        await query.edit_message_text(
+            f"❌ You don't have enough points!\n"
+            f"Your points: {user_data[user_id]['points']}\n"
+            f"Required: {bet}\n\n"
+            f"Earn more points with /checkin or referrals!",
+            parse_mode='Markdown'
         )
-        await query.edit_message_text(games_text, parse_mode='Markdown')
-        
-    elif query.data == 'earn':
-        points = user_data.get(user_id, {}).get('points', 0)
+        return
+    
+    # Deduct bet
+    user_data[user_id]['points'] -= bet
+    user_data[user_id]['games_played'] += 1
+    
+    # Roll dice (1-6)
+    roll = random.randint(1, 6)
+    
+    # Determine winnings
+    if roll <= 3:
+        # Loss
+        winnings = 0
+        result_text = "❌ You lost!"
+        win = False
+    elif roll <= 5:
+        # Win double
+        winnings = bet * 2
+        result_text = "✅ You won double!"
+        win = True
+    else:
+        # Rolled 6 - win triple
+        winnings = bet * 3
+        result_text = "🎉 JACKPOT! You won TRIPLE!"
+        win = True
+    
+    # Add winnings
+    if winnings > 0:
+        user_data[user_id]['points'] += winnings
+        user_data[user_id]['games_won'] += 1
+        user_data[user_id]['total_winnings'] += winnings
+    
+    # Create dice animation
+    dice_faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"]
+    
+    result_message = (
+        f"🎲 **DICE ROLL RESULT** 🎲\n\n"
+        f"You rolled: **{dice_faces[roll-1]} {roll}**\n\n"
+        f"{result_text}\n\n"
+        f"Bet: **{bet}** points\n"
+        f"Won: **{winnings}** points\n"
+        f"New Balance: **{user_data[user_id]['points']}** points\n\n"
+        f"Games Played: {user_data[user_id]['games_played']}\n"
+        f"Win Rate: {calculate_win_rate(user_id)}%"
+    )
+    
+    # Add play again button
+    keyboard = [
+        [InlineKeyboardButton("🎲 Play Again", callback_data='game_dice')],
+        [InlineKeyboardButton("🔙 Games Menu", callback_data='games_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        result_message,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def game_coin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Coin flip game."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    user_points = user_data.get(user_id, {}).get('points', 0)
+    
+    keyboard = [
+        [InlineKeyboardButton("Bet 10 Points - Heads", callback_data='coin_10_heads')],
+        [InlineKeyboardButton("Bet 10 Points - Tails", callback_data='coin_10_tails')],
+        [InlineKeyboardButton("Bet 25 Points - Heads", callback_data='coin_25_heads')],
+        [InlineKeyboardButton("Bet 25 Points - Tails", callback_data='coin_25_tails')],
+        [InlineKeyboardButton("Bet 50 Points - Heads", callback_data='coin_50_heads')],
+        [InlineKeyboardButton("Bet 50 Points - Tails", callback_data='coin_50_tails')],
+        [InlineKeyboardButton("🔙 Back to Games", callback_data='games_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    coin_text = (
+        f"🪙 **COIN FLIP** 🪙\n\n"
+        f"Your Points: **{user_points}**\n\n"
+        f"**How to play:**\n"
+        f"• Choose Heads or Tails\n"
+        f"• Win double your bet!\n\n"
+        f"Make your choice:"
+    )
+    
+    await query.edit_message_text(
+        coin_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def play_coin(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int, choice: str):
+    """Play coin flip game."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    
+    if user_id not in user_data:
+        user_data[user_id] = {'points': 100, 'games_played': 0, 'games_won': 0, 'total_winnings': 0}
+    
+    if user_data[user_id]['points'] < bet:
+        await query.edit_message_text(
+            f"❌ You don't have enough points!\n"
+            f"Your points: {user_data[user_id]['points']}",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Deduct bet
+    user_data[user_id]['points'] -= bet
+    user_data[user_id]['games_played'] += 1
+    
+    # Flip coin
+    flip = random.choice(['Heads', 'Tails'])
+    coin_emoji = "🪙 Heads" if flip == 'Heads' else "🪙 Tails"
+    
+    # Determine result
+    if choice.lower() == flip.lower():
+        winnings = bet * 2
+        user_data[user_id]['points'] += winnings
+        user_data[user_id]['games_won'] += 1
+        user_data[user_id]['total_winnings'] += winnings
+        result_text = "✅ **YOU WIN!**"
+    else:
+        winnings = 0
+        result_text = "❌ **You lose!**"
+    
+    result_message = (
+        f"🪙 **COIN FLIP RESULT** 🪙\n\n"
+        f"Coin landed: **{coin_emoji}**\n"
+        f"Your choice: **{choice}**\n\n"
+        f"{result_text}\n\n"
+        f"Bet: **{bet}** points\n"
+        f"Won: **{winnings}** points\n"
+        f"New Balance: **{user_data[user_id]['points']}** points"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🪙 Play Again", callback_data='game_coin')],
+        [InlineKeyboardButton("🔙 Games Menu", callback_data='games_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        result_message,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def game_slots(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Slot machine game."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    user_points = user_data.get(user_id, {}).get('points', 0)
+    
+    keyboard = [
+        [InlineKeyboardButton("💰 Bet 20 Points", callback_data='slots_20')],
+        [InlineKeyboardButton("💰 Bet 50 Points", callback_data='slots_50')],
+        [InlineKeyboardButton("💰 Bet 100 Points", callback_data='slots_100')],
+        [InlineKeyboardButton("💰 Bet 200 Points", callback_data='slots_200')],
+        [InlineKeyboardButton("🔙 Back to Games", callback_data='games_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    slots_text = (
+        f"🎰 **SLOT MACHINE** 🎰\n\n"
+        f"Your Points: **{user_points}**\n\n"
+        f"**Winning Combinations:**\n"
+        f"🍒🍒🍒 - Win 3x\n"
+        f"🍋🍋🍋 - Win 5x\n"
+        f"💎💎💎 - Win 10x\n"
+        f"7️⃣7️⃣7️⃣ - JACKPOT 20x!\n\n"
+        f"Select your bet:"
+    )
+    
+    await query.edit_message_text(
+        slots_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def play_slots(update: Update, context: ContextTypes.DEFAULT_TYPE, bet: int):
+    """Play slot machine."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    
+    if user_id not in user_data:
+        user_data[user_id] = {'points': 100, 'games_played': 0, 'games_won': 0, 'total_winnings': 0}
+    
+    if user_data[user_id]['points'] < bet:
+        await query.edit_message_text(
+            f"❌ You don't have enough points!\n"
+            f"Your points: {user_data[user_id]['points']}",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Deduct bet
+    user_data[user_id]['points'] -= bet
+    user_data[user_id]['games_played'] += 1
+    
+    # Slot symbols
+    symbols = ['🍒', '🍋', '💎', '7️⃣']
+    
+    # Spin
+    result = [random.choice(symbols) for _ in range(3)]
+    
+    # Calculate winnings
+    multiplier = 0
+    if result[0] == result[1] == result[2]:
+        if result[0] == '🍒':
+            multiplier = 3
+        elif result[0] == '🍋':
+            multiplier = 5
+        elif result[0] == '💎':
+            multiplier = 10
+        elif result[0] == '7️⃣':
+            multiplier = 20
+    
+    if multiplier > 0:
+        winnings = bet * multiplier
+        user_data[user_id]['points'] += winnings
+        user_data[user_id]['games_won'] += 1
+        user_data[user_id]['total_winnings'] += winnings
+        result_text = f"🎉 **JACKPOT! {multiplier}x WINNER!**"
+    else:
+        winnings = 0
+        result_text = "❌ **Try again!**"
+    
+    result_message = (
+        f"🎰 **SLOT MACHINE RESULT** 🎰\n\n"
+        f"{' | '.join(result)}\n\n"
+        f"{result_text}\n\n"
+        f"Bet: **{bet}** points\n"
+        f"Won: **{winnings}** points\n"
+        f"Multiplier: **{multiplier}x**\n"
+        f"New Balance: **{user_data[user_id]['points']}** points"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🎰 Play Again", callback_data='game_slots')],
+        [InlineKeyboardButton("🔙 Games Menu", callback_data='games_menu')],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        result_message,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def game_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user's game statistics."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    stats = user_data.get(user_id, {})
+    
+    games_played = stats.get('games_played', 0)
+    games_won = stats.get('games_won', 0)
+    win_rate = calculate_win_rate(user_id)
+    total_winnings = stats.get('total_winnings', 0)
+    points = stats.get('points', 0)
+    
+    stats_text = (
+        f"📊 **YOUR GAME STATISTICS** 📊\n\n"
+        f"🎮 Games Played: **{games_played}**\n"
+        f"🏆 Games Won: **{games_won}**\n"
+        f"📈 Win Rate: **{win_rate}%**\n"
+        f"💰 Total Winnings: **{total_winnings}**\n"
+        f"💵 Current Balance: **{points}**\n\n"
+        f"**Achievements:**\n"
+    )
+    
+    # Add achievements
+    achievements = []
+    if games_played >= 10:
+        achievements.append("🏅 Novice Player - Played 10 games")
+    if games_played >= 50:
+        achievements.append("🎖️ Experienced - Played 50 games")
+    if win_rate >= 50:
+        achievements.append("⭐ Sharp Shooter - 50%+ Win Rate")
+    if total_winnings >= 1000:
+        achievements.append("💰 High Roller - Won 1000+ points")
+    
+    if achievements:
+        stats_text += "\n".join([f"• {a}" for a in achievements])
+    else:
+        stats_text += "• Play more games to earn achievements!"
+    
+    keyboard = [[InlineKeyboardButton("🔙 Back to Games", callback_data='games_menu')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        stats_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+def calculate_win_rate(user_id):
+    """Calculate user's win rate percentage."""
+    stats = user_data.get(user_id, {})
+    games_played = stats.get('games_played', 0)
+    games_won = stats.get('games_won', 0)
+    
+    if games_played == 0:
+        return 0
+    return round((games_won / games_played) * 100)
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show top players leaderboard."""
+    query = update.callback_query
+    
+    # Sort users by points
+    sorted_users = sorted(user_data.items(), key=lambda x: x[1].get('points', 0), reverse=True)
+    top_users = sorted_users[:10]
+    
+    leaderboard_text = "🏆 **TOP PLAYERS LEADERBOARD** 🏆\n\n"
+    
+    if not top_users:
+        leaderboard_text += "No players yet! Be the first to play!"
+    else:
+        for i, (user_id, data) in enumerate(top_users, 1):
+            name = data.get('first_name', 'Anonymous')
+            points = data.get('points', 0)
+            wins = data.get('games_won', 0)
+            
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎮"
+            leaderboard_text += f"{medal} **{i}.** {name}\n"
+            leaderboard_text += f"   Points: {points} | Wins: {wins}\n\n"
+    
+    if query:
+        await query.answer()
+        keyboard = [[InlineKeyboardButton("🔙 Main Menu", callback_data='back_to_menu')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            leaderboard_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    else:
+        await update.message.reply_text(leaderboard_text, parse_mode='Markdown')
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle all button callbacks."""
+    query = update.callback_query
+    data = query.data
+    
+    # Games menu
+    if data == 'games_menu':
+        await games_menu(update, context)
+    
+    # Individual games
+    elif data == 'game_dice':
+        await game_dice(update, context)
+    elif data == 'game_coin':
+        await game_coin(update, context)
+    elif data == 'game_slots':
+        await game_slots(update, context)
+    elif data == 'game_stats':
+        await game_stats(update, context)
+    
+    # Dice bets
+    elif data.startswith('dice_'):
+        bet = int(data.split('_')[1])
+        await play_dice(update, context, bet)
+    
+    # Coin flip bets
+    elif data.startswith('coin_'):
+        parts = data.split('_')
+        bet = int(parts[1])
+        choice = parts[2]
+        await play_coin(update, context, bet, choice)
+    
+    # Slots bets
+    elif data.startswith('slots_'):
+        bet = int(data.split('_')[1])
+        await play_slots(update, context, bet)
+    
+    # Leaderboard
+    elif data == 'leaderboard':
+        await leaderboard(update, context)
+    
+    # Original callbacks
+    elif data == 'earn':
+        points = user_data.get(query.from_user.id, {}).get('points', 0)
         earn_text = (
             "💰 **Earn Points** 💰\n\n"
             "**Ways to earn:**\n"
             "• Invite friends (+50 points each)\n"
             "• Daily check-in (+10 points)\n"
-            "• Share content (+20 points)\n"
-            "• Participate in events (+100 points)\n"
-            "• Top referrals bonus (+500 points)\n\n"
+            "• Win games (varies)\n"
+            "• Participate in tournaments (+100 points)\n"
+            "• Top players bonus (+500 points)\n\n"
             f"Your current points: {points}\n\n"
             "Use /checkin to claim your daily points!"
         )
         await query.edit_message_text(earn_text, parse_mode='Markdown')
         
-    elif query.data == 'stats':
-        user_stats = user_data.get(user_id, {})
+    elif data == 'stats':
+        user_stats = user_data.get(query.from_user.id, {})
         stats_text = (
             f"📊 **Your Stats** 📊\n\n"
             f"• Username: @{user_stats.get('username', 'N/A')}\n"
             f"• Points: {user_stats.get('points', 0)}\n"
             f"• Referrals: {user_stats.get('referrals', 0)}\n"
-            f"• Joined: {user_stats.get('joined_date', datetime.now()).strftime('%Y-%m-%d')}\n"
-            f"• Rank: {get_user_rank(user_stats.get('points', 0))}"
+            f"• Games Played: {user_stats.get('games_played', 0)}\n"
+            f"• Games Won: {user_stats.get('games_won', 0)}\n"
+            f"• Win Rate: {calculate_win_rate(query.from_user.id)}%\n"
+            f"• Joined: {user_stats.get('joined_date', datetime.now()).strftime('%Y-%m-%d')}"
         )
         await query.edit_message_text(stats_text, parse_mode='Markdown')
         
-    elif query.data == 'refer':
-        user_stats = user_data.get(user_id, {})
+    elif data == 'refer':
+        user_stats = user_data.get(query.from_user.id, {})
         bot_username = (await context.bot.get_me()).username
         refer_text = (
             "🤝 **Refer Friends** 🤝\n\n"
             f"Share this link to earn points:\n"
-            f"`https://t.me/{bot_username}?start={user_id}`\n\n"
+            f"`https://t.me/{bot_username}?start={query.from_user.id}`\n\n"
             "**Benefits:**\n"
             "• 50 points per referral\n"
             "• Bonus for top referrers\n"
@@ -179,30 +683,59 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Total referrals: {user_stats.get('referrals', 0)}"
         )
         await query.edit_message_text(refer_text, parse_mode='Markdown')
-        return
     
-    # Add back button
-    keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data='back_to_menu')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.reply_text("Choose an option:", reply_markup=reply_markup)
+    elif data == 'back_to_menu':
+        await back_to_menu(update, context)
 
 async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Return to main menu."""
     query = update.callback_query
     await query.answer()
     
+    user_id = query.from_user.id
+    
     keyboard = [
-        [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
+        [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME_CLEAN}")],
         [InlineKeyboardButton("👥 Join Group", url=GROUP_LINK)],
-        [InlineKeyboardButton("🎮 Play Games", callback_data='games')],
+        [InlineKeyboardButton("🎮 PLAY GAMES 🎮", callback_data='games_menu')],
         [InlineKeyboardButton("💰 Earn Points", callback_data='earn')],
         [InlineKeyboardButton("📊 My Stats", callback_data='stats')],
         [InlineKeyboardButton("🤝 Refer Friends", callback_data='refer')],
+        [InlineKeyboardButton("🏆 Leaderboard", callback_data='leaderboard')],
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    user_stats = user_data.get(user_id, {})
+    
     await query.edit_message_text(
-        "🎮 **Ankit Hunter Comback Menu** 🎮\n\nChoose an option:",
+        f"🎮 **Ankit Hunter Comback Menu** 🎮\n\n"
+        f"Welcome back! Your points: **{user_stats.get('points', 0)}**\n\n"
+        f"Choose an option below:",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send promotional message."""
+    promo_text = random.choice(PROMO_MESSAGES)
+    
+    keyboard = [
+        [InlineKeyboardButton("🎮 Play Games Now", callback_data='games_menu')],
+        [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME_CLEAN}")],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    full_promo = (
+        f"{promo_text}\n\n"
+        f"🔗 **Join Ankit Hunter Comback today!**\n"
+        f"Channel: {CHANNEL_USERNAME}\n\n"
+        f"Click below to start playing!"
+    )
+    
+    await update.message.reply_text(
+        full_promo,
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
@@ -217,9 +750,12 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'username': user.username,
             'first_name': user.first_name,
             'joined_date': datetime.now(),
-            'points': 0,
+            'points': 100,
             'referrals': 0,
-            'last_checkin': None
+            'last_checkin': None,
+            'games_played': 0,
+            'games_won': 0,
+            'total_winnings': 0
         }
     
     last_checkin = user_data[user_id].get('last_checkin')
@@ -236,7 +772,8 @@ async def checkin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ Daily check-in successful!\n"
         f"You earned 10 points!\n"
-        f"Total points: {user_data[user_id]['points']}"
+        f"Total points: {user_data[user_id]['points']}\n\n"
+        f"🎮 Ready to play? Use /start and click PLAY GAMES!"
     )
 
 async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -246,43 +783,29 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_user_id = update.effective_user.id
         
         if referrer_id != new_user_id:
-            # Initialize if not exists
             if referrer_id not in user_data:
                 user_data[referrer_id] = {
-                    'username': None,
-                    'first_name': None,
-                    'joined_date': datetime.now(),
-                    'points': 0,
+                    'points': 100,
                     'referrals': 0,
-                    'last_checkin': None
+                    'games_played': 0,
+                    'games_won': 0,
+                    'total_winnings': 0
                 }
             
             user_data[referrer_id]['points'] += 50
             user_data[referrer_id]['referrals'] += 1
             
-            # Welcome the new user
             await start(update, context)
             
-            # Try to notify referrer (if they've started the bot)
             try:
                 await context.bot.send_message(
                     chat_id=referrer_id,
-                    text=f"🎉 Great news! Someone joined using your referral link!\n"
-                         f"You earned 50 points! Total points: {user_data[referrer_id]['points']}"
+                    text=f"🎉 Someone joined using your referral link!\n"
+                         f"You earned 50 points! Total points: {user_data[referrer_id]['points']}\n\n"
+                         f"Play games to win more! Use /start"
                 )
             except:
-                pass  # Referrer hasn't started the bot
-
-def get_user_rank(points):
-    """Get user rank based on points."""
-    if points < 100:
-        return "🥉 Bronze"
-    elif points < 500:
-        return "🥈 Silver"
-    elif points < 1000:
-        return "🥇 Gold"
-    else:
-        return "👑 Platinum"
+                pass
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log errors."""
@@ -296,7 +819,6 @@ async def post_init(application: Application):
 def main():
     """Start the bot."""
     try:
-        # Create application with proper error handling
         logger.info(f"Starting bot with token: {BOT_TOKEN[:10]}...")
         
         application = (
@@ -310,10 +832,10 @@ def main():
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("promo", promo))
         application.add_handler(CommandHandler("checkin", checkin))
+        application.add_handler(CommandHandler("leaderboard", leaderboard))
         
-        # Add callback query handlers
+        # Add callback query handler
         application.add_handler(CallbackQueryHandler(button_callback))
-        application.add_handler(CallbackQueryHandler(back_to_menu, pattern='^back_to_menu$'))
         
         # Add message handler for referral links
         application.add_handler(MessageHandler(filters.Regex(r'^/start \d+$'), handle_referral))
@@ -321,7 +843,6 @@ def main():
         # Add error handler
         application.add_error_handler(error_handler)
         
-        # Start bot
         logger.info("🤖 Ankit Hunter Comback Bot is starting...")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
