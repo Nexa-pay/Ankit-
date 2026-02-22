@@ -28,8 +28,8 @@ if not BOT_TOKEN:
     sys.exit(1)
 
 BOT_USERNAME = "AnkitHunterBot"
-CHANNEL_USERNAME = "@ankithuntercomback"  # Change this to your channel
-GROUP_LINK = "https://t.me/ankithuntergroup"  # Change this to your group
+CHANNEL_USERNAME = "@Thehindigroup"  # Change this to your channel
+GROUP_LINK = "https://t.me/+Uc3SnOfhASEzZDcx"  # Change this to your group
 
 # Store user data (in production, use database)
 user_data = {}
