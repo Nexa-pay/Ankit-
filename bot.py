@@ -29,8 +29,8 @@ if not BOT_TOKEN:
     sys.exit(1)
 
 # Channel and Group Configuration
-CHANNEL_USERNAME = os.environ.get('CHANNEL_USERNAME', '@ankithuntercomback')
-GROUP_LINK = os.environ.get('GROUP_LINK', 'https://t.me/ankithuntergroup')
+CHANNEL_USERNAME = os.environ.get('CHANNEL_USERNAME', '@thehindigroup')
+GROUP_LINK = os.environ.get('GROUP_LINK', 'https://t.me/+Uc3SnOfhASEzZDcx')
 
 if CHANNEL_USERNAME.startswith('@'):
     CHANNEL_USERNAME_CLEAN = CHANNEL_USERNAME[1:]
