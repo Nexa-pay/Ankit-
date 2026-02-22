@@ -29,14 +29,14 @@ if not BOT_TOKEN:
     sys.exit(1)
 
 # Owner Configuration
-OWNER_ID = int(os.environ.get('6950501653', '0'))  # Set your Telegram user ID here
+OWNER_ID = int(os.environ.get('OWNER_ID', '0'))  # Set your Telegram user ID here
 if OWNER_ID == 0:
-    logger.warning("6950501653 not set! Owner commands will be disabled.")
+    logger.warning("OWNER_ID not set! Owner commands will be disabled.")
 
 # Channel and Group Configuration
 CHANNEL_USERNAME = os.environ.get('CHANNEL_USERNAME', '@thehindigroup')
-CHANNEL_LINK = os.environ.get('CHANNEL_LINK', 'https://t.me/thehindigroup')
-GROUP_LINK = os.environ.get('GROUP_LINK', 'https://t.me/+Uc3SnOfhASEzZDcx')
+CHANNEL_LINK = os.environ.get('CHANNEL_LINK', 'https://t.me/+Uc3SnOfhASEzZDcx')
+GROUP_LINK = os.environ.get('GROUP_LINK', 'https://t.me/ankithuntergroup')
 
 # Clean channel username for display
 if CHANNEL_USERNAME.startswith('@'):
@@ -44,10 +44,13 @@ if CHANNEL_USERNAME.startswith('@'):
     CHANNEL_USERNAME_DISPLAY = CHANNEL_USERNAME
 else:
     CHANNEL_USERNAME_CLEAN = CHANNEL_USERNAME
-    CHANNEL_USERNAME_DISPLAY = f"@{CHANNEL_USENAME}"
+    CHANNEL_USERNAME_DISPLAY = f"@{CHANNEL_USERNAME}"
 
-logger.info(f"Bot configured for channel: {https://t.me/vellickor}")
-logger.info(f"Owner ID: {6950501653}")
+# CORRECTED LINES - THESE ARE FIXED NOW
+logger.info(f"Bot configured for channel: {CHANNEL_USERNAME_DISPLAY}")
+logger.info(f"Channel link: {CHANNEL_LINK}")
+logger.info(f"Group link: {GROUP_LINK}")
+logger.info(f"Owner ID: {OWNER_ID}")
 
 # Store user data
 user_data = {}
